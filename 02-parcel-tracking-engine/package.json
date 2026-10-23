@@ -1,0 +1,10 @@
+{
+  "name": "parcel-tracking-challenge",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "test": "node harness/runner.js",
+    "test:harness": "node --test harness/tests/*.test.js"
+  }
+}

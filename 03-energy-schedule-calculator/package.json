@@ -1,0 +1,15 @@
+{
+  "name": "energy-schedule-calculator-challenge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "tsx harness/cli.ts",
+    "test:harness": "tsx --test harness/tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

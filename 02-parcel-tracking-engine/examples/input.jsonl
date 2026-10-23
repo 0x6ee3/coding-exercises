@@ -1,0 +1,2 @@
+{"requestId":"case-001","events":[{"eventId":"e1","parcelId":"P-1001","timestamp":1000,"type":"CREATED","facilityId":"BER-01"},{"eventId":"e2","parcelId":"P-1001","timestamp":1100,"type":"PICKED_UP","facilityId":"BER-01"}]}
+{"requestId":"case-002","events":[null,{"eventId":"e9","parcelId":"P-2","timestamp":10,"type":"DELIVERED","facilityId":"F"}]}

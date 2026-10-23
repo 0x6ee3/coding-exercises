@@ -1,0 +1,1 @@
+{"requestId":"smoke","vehicles":[{"vehicleId":"vehicle-002","location":null,"battery":null,"status":"charging","lastSeen":1720000000},{"vehicleId":"vehicle-123","location":{"latitude":52.52,"longitude":13.405},"battery":75,"status":null,"lastSeen":1720000000}]}
