@@ -7,8 +7,7 @@ const edges = {
 };
 export const compare = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 const object = x => x !== null && typeof x === 'object' && !Array.isArray(x);
-// Explicit protocol whitespace, independent of runtime Unicode trim tables.
-const id = x => typeof x === 'string' && /[^\u0009-\u000d\u0020]/.test(x);
+const id = x => typeof x === 'string' && x.length > 0;
 export function reference(request) {
   const result = { requestId: object(request) && typeof request.requestId === 'string' ? request.requestId : null, parcels: [], errors: [] };
   if (!object(request) || !id(request.requestId) || !Array.isArray(request.events)) {

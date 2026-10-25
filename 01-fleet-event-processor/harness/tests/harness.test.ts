@@ -16,11 +16,11 @@ test('oracle matches independently authored smoke output', () => {
 test('ties, invalid-first ID consumption, global duplicates and invalid lastSeen', () => {
   assert.deepEqual(expected(fixedCases()[2]), { requestId: 'ties-and-invalids', vehicles: [{ vehicleId: 'v', battery: 80, location: null, status: 'reserved', lastSeen: 5 }] });
 });
-test('validation boundaries and ordinal sorting', () => {
+test('event value boundaries and ordinal sorting', () => {
   const result = expected(fixedCases()[3]);
   assert.deepEqual(result.vehicles.map(v => v.vehicleId), ['A', 'V0', 'V1', 'V2', 'a']);
   assert.equal(result.vehicles[0].battery, 0);
-  assert.equal(result.vehicles.at(-1)!.lastSeen, Number.MAX_SAFE_INTEGER);
+  assert.equal(result.vehicles.at(-1)!.lastSeen, 1720000000);
 });
 test('independent property clocks, fractional values, ASCII ties, extras and request reset', () => {
   assert.deepEqual(expected(fixedCases()[4]), { requestId: 'property-ordering', vehicles: [{
@@ -65,20 +65,36 @@ test('simple mock fails nonempty fleet case with useful diff', async () => {
 test('edge scenarios have hand-checked expectations', () => {
   const scenarios = edgeCases();
   assert.deepEqual(expected(scenarios[0]).vehicles, []);
-  const sortedIds = ['10', '2', 'Z', '_', '__proto__', 'a', 'a0', 'constructor', 'v'.repeat(128)];
+  const sortedIds = ['Vehicle-A', 'vehicle-10', 'vehicle-2', 'vehicle-a', 'vehicle-a0'];
   assert.deepEqual(expected(scenarios[1]).vehicles, sortedIds.map(vehicleId => ({ vehicleId, location: null, battery: 50, status: null, lastSeen: 1 })));
   assert.deepEqual(expected(scenarios[2]).vehicles, ['available', 'reserved', 'driving', 'charging', 'maintenance'].map((status, i) => ({ vehicleId: `v${i}`, location: null, battery: null, status, lastSeen: 0 })));
-  for (const [index, battery, lastSeen] of [[3, 10, 1], [4, 50, 1], [5, 11, 9007199254740991]]) {
+  for (const [index, battery, lastSeen] of [[3, 10, 1], [4, 50, 1], [5, 11, 1720000001]]) {
     assert.deepEqual(expected(scenarios[index]).vehicles, [{ vehicleId: 'v', location: null, battery, status: null, lastSeen }]);
   }
 });
 
-test('fixtures survive JSON transport without changing their values', () => {
+test('all participant fixtures honor the guaranteed input structure', () => {
   for (const request of [...fixedCases(), ...generateCases(0, 5), ...generateCases(4294967295, 5)]) {
     assert.ok(request.events.length <= 15000);
     assert.ok(new Set(request.events.flatMap(event => event && typeof event === 'object' && 'vehicleId' in event ? [event.vehicleId] : [])).size <= 1000);
     assert.deepEqual(JSON.parse(JSON.stringify(request)), request);
     assert.deepEqual(expected(JSON.parse(JSON.stringify(request))), expected(request));
+    assert.equal(typeof request.requestId, 'string');
+    for (const event of request.events) {
+      assert.ok(event !== null && typeof event === 'object' && !Array.isArray(event));
+      for (const id of [event.eventId, event.vehicleId]) {
+        assert.equal(typeof id, 'string');
+        assert.ok(id.length > 0 && !/[^A-Za-z0-9_-]/.test(id));
+      }
+      assert.ok(Number.isInteger(event.timestamp) && event.timestamp >= 0 && event.timestamp <= 2147483647);
+      assert.ok(['location', 'battery', 'status'].includes(event.type));
+      if (event.type === 'location') {
+        assert.equal(typeof event.latitude, 'number'); assert.ok(Number.isFinite(event.latitude));
+        assert.equal(typeof event.longitude, 'number'); assert.ok(Number.isFinite(event.longitude));
+      } else if (event.type === 'battery') {
+        assert.equal(typeof event.percentage, 'number'); assert.ok(Number.isFinite(event.percentage));
+      } else assert.equal(typeof event.status, 'string');
+    }
   }
 });
 

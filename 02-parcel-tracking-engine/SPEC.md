@@ -4,14 +4,63 @@ Use UTF-8 JSONL: one compact JSON request per stdin line and exactly one JSON re
 
 ## Request and response
 
-A request is an object with a nonblank string `requestId` and an array `events`. A usable identifier (requestId, parcelId, eventId, facilityId) is a string containing at least one character outside U+0009 through U+000D and U+0020. These six ASCII whitespace characters alone define blankness; other characters, including U+00A0, are significant. Preserve the original string; do not trim or normalize it. Identifiers are case sensitive. String comparisons use ascending UTF-16 code units, without locale collation. Generated identifiers use ASCII and U+00A0, so code-point order and UTF-16 order agree for all generated IDs.
+A request is an object with a nonempty string `requestId` and an array `events`. All identifiers (requestId, parcelId, eventId, facilityId) must be nonempty strings. Preserve the original value: do not trim, normalize, or change capitalization. Identifiers are case sensitive. Spaces are significant; even a string consisting only of spaces is nonempty and must be preserved. Missing identifiers, empty strings, null, and non-string values are invalid.
 
-Every response has exactly `requestId`, `parcels`, and `errors`. A valid request echoes requestId. An invalid request returns no parcels and `errors: [{"reason":"INVALID_REQUEST"}]`; echo requestId if the input is an object with a string requestId (even blank), otherwise use null. An invalid request is a non-object, missing/invalid requestId, or non-array events. Empty events is valid. The harness sends syntactically valid JSON only; invalid JSON syntax is outside the challenge.
+Compare identifiers in case-sensitive lexicographic order, with a shorter prefix first. For example, `A < a`, `e < e0`, and `P-10 < P-2`. The harness uses ASCII identifiers; Unicode normalization and locale-specific collation are not part of the assessment.
 
-Each parcel record has exactly:
+Every response has exactly `requestId`, `parcels`, and `errors`. A valid request echoes requestId. An invalid request is a non-object, has a missing/invalid requestId, or has a missing/non-array events field. Do not process any events in an invalid request. Echo requestId if the input is an object with a string requestId (including an empty string); otherwise return null for requestId. The harness sends syntactically valid JSON only; invalid JSON syntax is outside the challenge.
+
+For this invalid request:
 
 ```json
-{"parcelId":"P-1001","status":null,"currentFacility":null,"lastUpdated":null,"history":[],"anomalies":[]}
+{"requestId": "case-invalid", "events": null}
+```
+
+The complete expected response is:
+
+```json
+{
+  "requestId": "case-invalid",
+  "parcels": [],
+  "errors": [{"reason": "INVALID_REQUEST"}]
+}
+```
+
+For an input line containing `null`, the complete expected response is:
+
+```json
+{
+  "requestId": null,
+  "parcels": [],
+  "errors": [{"reason": "INVALID_REQUEST"}]
+}
+```
+
+An empty events array is valid. For requestId `case-empty` with no events, the complete expected response is:
+
+```json
+{
+  "requestId": "case-empty",
+  "parcels": [],
+  "errors": []
+}
+```
+
+Every parcel has exactly the seven fields shown in this complete response for a single parcel before any event has been accepted:
+
+```json
+{
+  "requestId": "case-validation",
+  "parcels": [{
+    "parcelId": "P-1001",
+    "status": null,
+    "currentFacility": null,
+    "lastUpdated": null,
+    "history": [],
+    "anomalies": [{"eventId": "e1", "reason": "MISSING_FIELD"}]
+  }],
+  "errors": []
+}
 ```
 
 Initialize all three nullable fields to null; history/anomalies to empty arrays. Sort parcel records by parcelId ascending. Include every parcel identified in a retained event, even if all its payloads are invalid. Unknown input properties do not appear in output.
@@ -20,18 +69,37 @@ Initialize all three nullable fields to null; history/anomalies to empty arrays.
 
 Apply these phases in this order. Each event produces at most one error or anomaly. Duplicates produce neither.
 
-1. Visit events in input order. Non-object events (including null and arrays) produce request-level `{index, reason: "INVALID_EVENT"}`. Index is zero based.
-2. Missing/unusable eventId produces `{index, reason: "INVALID_EVENT_ID"}` at request level. Do not reserve such an ID.
+1. Visit events in input order. Non-object events (including null and arrays) produce INVALID_EVENT in the request's errors array. Include the zero-based input index.
+2. Missing/invalid eventId produces INVALID_EVENT_ID at request level. Include the input index. Do not reserve such an ID.
 3. Deduplicate globally across the request by exact eventId. Keep the first occurrence, reserving its ID even when its parcelId or payload is invalid. Ignore every later occurrence, including occurrences naming a different parcel.
-4. Missing/unusable parcelId produces `{index, eventId, reason: "INVALID_PARCEL_ID"}` at request level. Do not create a parcel record for it.
-5. Otherwise create the parcel record if needed. Validate payload using the following precedence. The first applicable failure produces `{eventId, reason}` in that parcel's anomalies. Exclude the event from state processing.
+4. Missing/invalid parcelId produces INVALID_PARCEL_ID at request level. Include the input index and eventId. Do not create a parcel record for it.
+5. Otherwise create the parcel record if needed. Validate payload using the following precedence. The first applicable failure adds an anomaly containing eventId and reason to that parcel. Exclude the event from state processing.
 
-| Check | Reason |
-| --- | --- |
-| Any of timestamp, type, facilityId is absent | MISSING_FIELD |
-| timestamp is not a JSON number that is an integer in [0, 9007199254740991] | INVALID_TIMESTAMP |
-| type is not exactly a defined status string | INVALID_EVENT_TYPE |
-| facilityId is not a usable identifier | INVALID_FACILITY_ID |
+For each row below, start with this request and make only the change specified in the Check column. Rows are independent. Each expected response is complete; the parcel exists but has no accepted event.
+
+```json
+{
+  "requestId": "case-validation",
+  "events": [
+    {"eventId":"e1","parcelId":"P-1001","timestamp":1000,"type":"CREATED","facilityId":"BER-01"}
+  ]
+}
+```
+
+| Check | Reason | Expected response |
+| --- | --- | --- |
+| Any of timestamp, type, facilityId is absent. Example: remove facilityId. | MISSING_FIELD | `{"requestId":"case-validation","parcels":[{"parcelId":"P-1001","status":null,"currentFacility":null,"lastUpdated":null,"history":[],"anomalies":[{"eventId":"e1","reason":"MISSING_FIELD"}]}],"errors":[]}` |
+| timestamp is not a JSON number that is an integer from 0 through 9007199254740991. Example: set timestamp to the string `"1000"`. | INVALID_TIMESTAMP | `{"requestId":"case-validation","parcels":[{"parcelId":"P-1001","status":null,"currentFacility":null,"lastUpdated":null,"history":[],"anomalies":[{"eventId":"e1","reason":"INVALID_TIMESTAMP"}]}],"errors":[]}` |
+| type is not exactly a defined status string. Example: set type to `"UNKNOWN"`. | INVALID_EVENT_TYPE | `{"requestId":"case-validation","parcels":[{"parcelId":"P-1001","status":null,"currentFacility":null,"lastUpdated":null,"history":[],"anomalies":[{"eventId":"e1","reason":"INVALID_EVENT_TYPE"}]}],"errors":[]}` |
+| facilityId is not a nonempty string. Example: set facilityId to `""`. | INVALID_FACILITY_ID | `{"requestId":"case-validation","parcels":[{"parcelId":"P-1001","status":null,"currentFacility":null,"lastUpdated":null,"history":[],"anomalies":[{"eventId":"e1","reason":"INVALID_FACILITY_ID"}]}],"errors":[]}` |
+
+For request-level event errors, each row below is a separate request with requestId `case-error` and exactly one event at index 0. Each expected response is complete.
+
+| Check / example event | Reason | Expected response |
+| --- | --- | --- |
+| Event is not an object; example: `null` | INVALID_EVENT | `{"requestId":"case-error","parcels":[],"errors":[{"index":0,"reason":"INVALID_EVENT"}]}` |
+| eventId is missing or invalid; example: `{"parcelId":"P-1001"}` | INVALID_EVENT_ID | `{"requestId":"case-error","parcels":[],"errors":[{"index":0,"reason":"INVALID_EVENT_ID"}]}` |
+| parcelId is missing or invalid; example: `{"eventId":"e1"}` | INVALID_PARCEL_ID | `{"requestId":"case-error","parcels":[],"errors":[{"index":0,"eventId":"e1","reason":"INVALID_PARCEL_ID"}]}` |
 
 Explicit null is present but invalid. Numeric strings, fractions, negative numbers and booleans are invalid timestamps. All payload anomalies appear first, in input order per parcel. Request-level errors appear in input order. There is no placeholder parcel for an unusable identifier.
 
@@ -58,4 +126,33 @@ When status is null, any payload-valid event other than CREATED produces `MISSIN
 
 Accepted events set status to type, currentFacility to facilityId, lastUpdated to timestamp, and append type to history. Rejected events modify none of these four fields. Sorting-center/transit loops may repeat indefinitely through the defined edges. No facility topology validation is required.
 
-Example anomaly: `{"eventId":"e9","reason":"INVALID_TRANSITION"}`. A parcel without accepted CREATED retains null status/facility/timestamp and empty history. There is no extra parcel-level summary anomaly for missing creation; each valid premature event gets MISSING_CREATED.
+A parcel without accepted CREATED retains null status/facility/timestamp and empty history. There is no extra parcel-level summary anomaly for missing creation; each valid premature event gets MISSING_CREATED.
+
+For example, this request attempts delivery immediately after creation:
+
+```json
+{
+  "requestId": "case-transition",
+  "events": [
+    {"eventId":"e1","parcelId":"P-1001","timestamp":1000,"type":"CREATED","facilityId":"BER-01"},
+    {"eventId":"e9","parcelId":"P-1001","timestamp":1100,"type":"DELIVERED","facilityId":"BER-02"}
+  ]
+}
+```
+
+The complete expected response is:
+
+```json
+{
+  "requestId": "case-transition",
+  "parcels": [{
+    "parcelId": "P-1001",
+    "status": "CREATED",
+    "currentFacility": "BER-01",
+    "lastUpdated": 1000,
+    "history": ["CREATED"],
+    "anomalies": [{"eventId": "e9", "reason": "INVALID_TRANSITION"}]
+  }],
+  "errors": []
+}
+```

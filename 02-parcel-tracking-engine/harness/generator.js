@@ -36,7 +36,7 @@ export function* generate(seed = '1', count = 32) {
         const e = { ...events[0], eventId: `missing-${key}` }; delete e[key]; events.push(e);
       }
       events.push({ eventId: 'precedence', parcelId: 'BAD', timestamp: false, type: 'UNKNOWN', facilityId: null });
-      for (const badId of [null, 1, false, '', ' \t\r\n']) {
+      for (const badId of [null, 1, false, '']) {
         events.push({ eventId: badId, parcelId: 'X' }, { eventId: `parcel-${events.length}`, parcelId: badId });
       }
     }
@@ -46,7 +46,7 @@ export function* generate(seed = '1', count = 32) {
     }
     if (category === 'boundaries') {
       events.length = 0;
-      for (const parcelId of ['z', 'A', 'a', '10', '2', '__proto__', 'constructor', ' P ', '\u00a0']) {
+      for (const parcelId of ['z', 'A', 'a', '10', '2', '__proto__', 'constructor', ' P ', 'P', 'p', ' ']) {
         const e = (eventId, type, timestamp) => ({ eventId: `${parcelId}-${eventId}`, parcelId, type, timestamp, facilityId: ` ${eventId} `, ignored: true });
         events.push(e('premature', 'IN_TRANSIT', 0), e('create', 'CREATED', 1), e('pickup', 'PICKED_UP', 9007199254740991));
         events.push({ ...e('bad', 'UNKNOWN', 0), timestamp: null });

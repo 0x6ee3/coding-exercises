@@ -2,7 +2,7 @@
 
 Implement a program in TypeScript or any language that reconstructs a vehicle fleet from event data. Write your program in the empty `participant/` directory. This challenge is intended for practice without AI-assisted implementation.
 
-Read [SPEC.md](SPEC.md) for every business rule and the complete wire protocol. The paired files in `examples/` show a small smoke request and its expected response.
+Read [SPEC.md](SPEC.md) for the event rules and input/output format. The harness supplies correctly structured events; only coordinate ranges, battery ranges, and status values may be invalid. The paired files in `examples/` show a small smoke request and its expected response.
 
 Requirements: Node.js 22 or newer, npm, and the runtime/compiler for your chosen language.
 
@@ -35,6 +35,6 @@ Options:
 | `--verbose` | false | Print each passing case |
 | `--help` | false | Print usage |
 
-The suite includes empty and partial fleets, boundary and invalid values, duplicates and conflicting duplicates, timestamp ties, shuffled events, and streams with hundreds of vehicles and thousands of events. The same seed and case count reproduce the same suite for this harness version. A mismatch prints the request ID, differing JSON paths, and an input preview. Re-run the same command with `--verbose` to locate it. Set `--cases 0` to run only fixed cases. Failure stops the run and returns exit code 1; success returns 0. All requests must pass; there is no partial-credit scoring or speed ranking. See the specification for request size limits and numeric interoperability rules.
+The suite includes empty and partial fleets, boundary and invalid event values, duplicates and conflicting duplicates, timestamp ties, shuffled events, and streams with hundreds of vehicles and thousands of events. The same seed and case count reproduce the same suite for this harness version. A mismatch prints the request ID, differing JSON paths, and an input preview. Re-run the same command with `--verbose` to locate it. Set `--cases 0` to run only fixed cases. Failure stops the run and returns exit code 1; success returns 0. All requests must pass; there is no partial-credit scoring or speed ranking.
 
 For harness maintenance, run `npm run test:harness` and `npm run typecheck`. Test fixtures contain only a deliberately limited mock, which cannot solve nonempty fleet requests.

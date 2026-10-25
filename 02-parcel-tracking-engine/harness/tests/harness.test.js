@@ -63,7 +63,7 @@ test('generated assessment cases exercise their advertised adversarial behavior'
     assert.deepEqual(tie.history, ['CREATED']);
     assert.deepEqual(tie.anomalies, [{ eventId: 'tie-10', reason: 'MISSING_CREATED' }]);
     const boundaries = output('boundaries').parcels;
-    assert.deepEqual(boundaries.map(p => p.parcelId), [' P ', '10', '2', 'A', '__proto__', 'a', 'constructor', 'z', '\u00a0']);
+    assert.deepEqual(boundaries.map(p => p.parcelId), [' ', ' P ', '10', '2', 'A', 'P', '__proto__', 'a', 'constructor', 'p', 'z']);
     for (const p of boundaries) {
       assert.equal(p.lastUpdated, 9007199254740991);
       assert.equal(p.currentFacility, ' pickup ');
@@ -76,9 +76,9 @@ test('generated assessment cases exercise their advertised adversarial behavior'
     for (const c of cases.filter(c => c.category === 'invalid-request')) assert.deepEqual(reference(c.request).errors, [{ reason: 'INVALID_REQUEST' }]);
   }
 });
-test('identifier blankness, validation precedence and integer boundaries follow protocol', () => {
-  assert.deepEqual(run([event(' \t\n', 'CREATED')]).errors, [{ index: 0, reason: 'INVALID_EVENT_ID' }]);
-  assert.equal(run([event('\u00a0', 'CREATED', -0)]).parcels[0].status, 'CREATED');
+test('nonempty identifiers, validation precedence and integer boundaries follow protocol', () => {
+  assert.deepEqual(run([event('', 'CREATED')]).errors, [{ index: 0, reason: 'INVALID_EVENT_ID' }]);
+  assert.equal(run([event(' ', 'CREATED', -0)]).parcels[0].status, 'CREATED');
   const payloads = [
     [{ timestamp: false, type: 'bad', facilityId: null }, 'INVALID_TIMESTAMP'],
     [{ timestamp: 0, type: 'bad', facilityId: null }, 'INVALID_EVENT_TYPE'],
@@ -99,6 +99,33 @@ test('validator pinpoints nested mismatches and rejects extra keys', () => {
 test('documented JSONL examples match literal expected responses', () => {
   const lines = name => readFileSync(new URL(`../../examples/${name}.jsonl`, import.meta.url), 'utf8').trim().split(/\r?\n/).map(JSON.parse);
   assert.deepEqual(lines('input').map(reference), lines('output'));
+});
+test('SPEC validation tables contain complete, correct expected responses', () => {
+  const spec = readFileSync(new URL('../../SPEC.md', import.meta.url), 'utf8');
+  const expected = [...spec.matchAll(/\| `({"requestId".*})` \|/g)].map(m => JSON.parse(m[1]));
+  assert.equal(expected.length, 7);
+  const payloads = [
+    { eventId: 'e1', parcelId: 'P-1001', timestamp: 1000, type: 'CREATED' },
+    { eventId: 'e1', parcelId: 'P-1001', timestamp: '1000', type: 'CREATED', facilityId: 'BER-01' },
+    { eventId: 'e1', parcelId: 'P-1001', timestamp: 1000, type: 'UNKNOWN', facilityId: 'BER-01' },
+    { eventId: 'e1', parcelId: 'P-1001', timestamp: 1000, type: 'CREATED', facilityId: '' },
+  ];
+  const requests = [...payloads.map(e => ({ requestId: 'case-validation', events: [e] })), ...[null, { parcelId: 'P-1001' }, { eventId: 'e1' }].map(e => ({ requestId: 'case-error', events: [e] }))];
+  assert.deepEqual(requests.map(reference), expected);
+});
+test('identifiers preserve spaces and case across all identifier fields', () => {
+  const response = reference({ requestId: ' case ', events: [
+    event('e', 'PICKED_UP', 0, { parcelId: ' P ', facilityId: ' f ' }),
+    event('E', 'CREATED', 0, { parcelId: ' P ', facilityId: 'F' }),
+    event(' e ', 'CREATED', 0, { parcelId: 'P', facilityId: ' ' }),
+    event('other', 'CREATED', 0, { parcelId: 'p', facilityId: 'f' }),
+  ] });
+  assert.equal(response.requestId, ' case ');
+  assert.deepEqual(response.errors, []);
+  assert.deepEqual(response.parcels.map(p => p.parcelId), [' P ', 'P', 'p']);
+  assert.deepEqual(response.parcels.map(p => p.history), [['CREATED', 'PICKED_UP'], ['CREATED'], ['CREATED']]);
+  assert.deepEqual(response.parcels.map(p => p.currentFacility), [' f ', ' ', 'f']);
+  assert.ok(response.parcels.every(p => p.anomalies.length === 0));
 });
 test('repeated loops preserve all accepted scans and rejected terminal scan changes nothing', () => {
   const types = ['CREATED', 'PICKED_UP', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'OUT_FOR_DELIVERY', 'DELIVERED'];

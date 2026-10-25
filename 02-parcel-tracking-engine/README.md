@@ -1,21 +1,77 @@
-# Parcel Tracking Engine challenge
+# Parcel Tracking Engine
 
-Implement the engine independently in any language. `participant/` is intentionally empty. Read [SPEC.md](SPEC.md) for the complete deterministic protocol, validation precedence, state transitions, and anomaly ordering. The harness's private reference implementation lives only in `harness/`; it is verification infrastructure, not participant starter code.
+Build an engine that reconstructs parcel states from unordered scan events, validates transitions, and reports anomalies. Implement it independently in any language inside `participant/`, which starts empty.
 
-Requires Node.js 20+ and npm on PATH. There are no package dependencies or install step.
+Read [SPEC.md](SPEC.md) for the complete protocol, validation rules, state transitions, and anomaly ordering. The reference implementation in `harness/` supports verification; it is not starter code for your solution.
+
+## Scenario coverage
+
+Generated cases cycle through 16 categories:
+
+| Category | What it exercises |
+| --- | --- |
+| Delivery | Successful deliveries and returns |
+| Multiple facilities | Tracking the facility of the most recent accepted scan |
+| Sorting loops | Repeated transit and sorting-center visits |
+| Shuffled arrival | Processing scans by event order rather than arrival order |
+| Duplicates | Identical and conflicting scans sharing an event ID |
+| Invalid transitions | Rejecting disallowed state changes |
+| Missing creation | Scans without an accepted CREATED event |
+| After terminal states | Scans after delivery or return |
+| Scale | Batches containing 2,500 parcels |
+| Simultaneous shipments | Interleaved parcels with overlapping timestamps |
+| Malformed events | Missing fields, incorrect types, and invalid values |
+| Tied timestamps | Breaking ties by event ID |
+| Boundaries | Identifier preservation, capitalization, and numeric limits |
+| State pairs | All 49 pairs of current and next statuses |
+| Empty batches | Requests containing no events |
+| Invalid requests | Incorrect request structures |
+
+Use at least 16 cases to cover every category; the default runs two rounds. Invalid-request variants rotate over six rounds, so 96 cases covers them all. Counts below 16 cover only the initial categories. The same seed and case count reproduce identical inputs within this harness version. Each request is an independent batch.
+
+## Requirements
+
+Install Node.js 20+ and npm, plus the runtime or compiler for your chosen language. There are no package dependencies or install step. Compile your program before running the harness if your language requires it.
+
+## Run your solution
+
+Run these commands from this directory:
 
 ```sh
 npm run test -- --command "node participant/main.js"
-npm run test -- --command "python participant/main.py" --seed shipment-42 --cases 36 --timeout 5000 --verbose
+npm run test -- --command "python participant/main.py" --seed shipment-42 --cases 96 --timeout 5000 --verbose
+```
+
+The participant command runs through the platform shell with this working directory; quote paths according to your shell. Your program must read JSONL from stdin, write and flush one JSONL response per request, and remain running until stdin closes. Send debugging output to stderr.
+
+### Options
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--command` | Required | Command that starts your program |
+| `--seed` | `1` | Arbitrary string used to reproduce generated inputs |
+| `--cases` | `32` | Positive integer specifying how many requests to test |
+| `--timeout` | `5000` | Milliseconds allowed per response and for shutdown after EOF; integer from 1 through 2147483647 |
+| `--verbose` | Off | Print passing case names and the full failing request |
+
+The first response timeout includes runtime startup. Increase the timeout if your runtime needs more time to start or process large batches.
+
+## Results and diagnostics
+
+The harness compares the entire response: statuses, history, facilities, timestamps, anomalies, errors, array ordering, and missing or extra fields. A run passes only when every response matches and the program exits successfully after EOF.
+
+Success exits with code 0; failures exit with code 1. Case failures report the seed, case ID, category, first differing JSON path where applicable, and recent participant stderr. Session failures also report unsolicited output or unsuccessful shutdown. Use `--verbose` to inspect the failing input, then rerun with the same seed and case count.
+
+Stdout is bounded to 32 MiB per buffered response, and the last 8192 UTF-16 code units of stderr are retained. On failure, the runner requests process-tree termination and releases its streams. It runs your command locally and is not a sandbox for untrusted programs.
+
+## Examples
+
+[examples/input.jsonl](examples/input.jsonl) and [examples/output.jsonl](examples/output.jsonl) show a two-request session.
+
+## Verify the harness
+
+```sh
 npm run test:harness
 ```
 
-Run these commands from this directory. The command runs through the platform shell with this working directory; quote paths according to your shell. Only run trusted participant commands. Language runtimes must be installed separately. Emit only JSONL on stdout, flush each response, and handle multiple lines in a single process until EOF.
-
-Options: `--seed` is an arbitrary string (default `1`); `--cases` is a positive integer (default `32`); `--timeout` is an integer from 1 through 2147483647 in milliseconds per response and for shutdown after EOF (default `5000`); `--verbose` prints passing case names and the full failing request. Case failures exit with code 1 and include seed, case ID, category, first differing JSON path where applicable, and recent participant stderr. Session failures such as unsolicited output or unsuccessful shutdown also exit with code 1. Success exits with code 0. Stdout is bounded to 32 MiB per buffered response; stderr retains the last 8192 UTF-16 code units. The runner requests process-tree termination on failure and releases its streams. This runner is not a sandbox for untrusted programs. The first response timeout includes runtime startup; compile submissions before timing them and use the same generous timeout and environment for all candidates.
-
-Cases cycle through 16 categories: delivery, multiple facilities, sorting loops, shuffled arrival, identical/conflicting duplicates, invalid transitions, missing creation, events after both terminal states, 2500 parcels, simultaneous shipments, malformed events, tied timestamps, identifier/numeric boundaries, all 49 state pairs, empty batches, and invalid request envelopes. Use at least 16 cases for every category; the default runs two rounds. Invalid-envelope variants rotate over six rounds (96 cases covers them all). A seed and count reproduce identical inputs within this harness version. Case counts below 16 intentionally cover only the prefix. The runner compares the entire response, including history, facilities, timestamps, anomalies, errors, ordering, and extra/missing keys. Each request is a separate batch and all deduplication is batch-local.
-
-For hiring, keep `harness/` assessor-owned: distribute SPEC.md, examples/, and an empty participant directory to candidates. Do not give candidates the oracle or the oracle-backed self-test fixture. Run the harness externally against their executable. This is a binary correctness gate for the chosen suite, not a numeric hiring score: a case passes only if the entire response matches, and the session must exit cleanly. No credit is inferred from stdout claims, a short case prefix, or a percentage of generated cases. Fix the seed list, case count, runtime versions, and timeout before comparing candidates. A suitable full assessment uses multiple fixed seeds with 96 cases each. Code quality and independent authorship require separate human review; this local runner cannot enforce either.
-
-[examples/input.jsonl](examples/input.jsonl) and [examples/output.jsonl](examples/output.jsonl) show a two-request session. Dedicated harness tests use literal expectations, every state pair, malformed inputs, deterministic generation, scale checks, and subprocess fixtures for protocol errors, incorrect output, timeouts, and premature exits. The fixture under `harness/tests/` is only for self-testing and must not be imported by participant code.
+The dedicated tests check literal expected results, every state pair, malformed inputs, deterministic generation, large batches, and runner behavior for protocol errors, incorrect output, timeouts, and premature exits. Fixtures under `harness/tests/` are for testing the harness; do not import them into your solution.
