@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import type { Request, FleetEvent } from './reference.js';
-import { edgeCases } from './edge-cases.js';
+import type { Request, FleetEvent } from './reference.ts';
+import { edgeCases } from './edge-cases.ts';
 
 export function random(seed: number) {
   let state = seed >>> 0;

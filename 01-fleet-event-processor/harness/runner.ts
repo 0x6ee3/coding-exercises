@@ -1,13 +1,15 @@
 import { spawn } from 'node:child_process';
-import type { Request } from './reference.js';
-import { expected } from './reference.js';
-import { differences } from './validator.js';
-import { ResponseLines } from './jsonl.js';
-import { parseResponse } from './parse-response.js';
+import type { Request } from './reference.ts';
+import { expected } from './reference.ts';
+import { differences } from './validator.ts';
+import { ResponseLines } from './jsonl.ts';
+import { parseResponse } from './parse-response.ts';
 
-export async function run(command: string, cases: Iterable<Request>, timeout: number, verbose = false): Promise<void> {
+export async function run(command: string | undefined, cases: Iterable<Request>, timeout: number, verbose = false): Promise<void> {
   // Only the explicit CLI command reaches the shell; fixture content is stdin data.
-  const child = spawn(command, { shell: true, stdio: ['pipe', 'pipe', 'inherit'], detached: process.platform !== 'win32' });
+  const child = spawn(command ?? process.execPath, command === undefined ? ['participant/main.ts'] : [], {
+    shell: command !== undefined, stdio: ['pipe', 'pipe', 'inherit'], detached: process.platform !== 'win32', windowsHide: true,
+  });
   let failure: Error | undefined, response: ((line: string) => void) | undefined;
   let closed = false, requestId = 'startup';
   let abort!: (error: Error) => void;

@@ -5,7 +5,12 @@ export class ResponseLines {
   private fragments: Buffer[] = [];
   private size = 0;
   private decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
-  constructor(private deliver: (line: string) => void, private limit = MAX_RESPONSE_BYTES) {}
+  private deliver: (line: string) => void;
+  private limit: number;
+  constructor(deliver: (line: string) => void, limit = MAX_RESPONSE_BYTES) {
+    this.deliver = deliver;
+    this.limit = limit;
+  }
   push(chunk: Buffer): void {
     let start = 0;
     while (start < chunk.length) {

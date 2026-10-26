@@ -2,9 +2,11 @@
   "name": "parcel-tracking-challenge",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=24" },
   "scripts": {
-    "test": "node harness/runner.js",
-    "test:harness": "node --test harness/tests/*.test.js"
-  }
+    "test": "node harness/runner.ts",
+    "test:harness": "node --test harness/tests/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.9.0" }
 }

@@ -1,14 +1,59 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { expected } from '../reference.js';
-import { fixedCases, generateCases } from '../generators.js';
-import { differences } from '../validator.js';
-import { run } from '../runner.js';
-import { readFileSync } from 'node:fs';
-import { edgeCases } from '../edge-cases.js';
-import { ResponseLines } from '../jsonl.js';
-import { parseResponse } from '../parse-response.js';
+import { expected } from '../reference.ts';
+import { fixedCases, generateCases } from '../generators.ts';
+import { differences } from '../validator.ts';
+import { run } from '../runner.ts';
+import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { edgeCases } from '../edge-cases.ts';
+import { ResponseLines } from '../jsonl.ts';
+import { parseResponse } from '../parse-response.ts';
 const command = `"${process.execPath}" harness/tests/fixtures/mock.mjs`;
+
+test('CLI defaults to participant/main.ts and allows custom commands', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'fleet participant '));
+  const runner = fileURLToPath(new URL('../cli.ts', import.meta.url));
+  const oracle = fileURLToPath(new URL('../reference.ts', import.meta.url));
+  const runCli = (args: string[]) => spawnSync(process.execPath, [runner, '--cases', '2', ...args], {
+    cwd, encoding: 'utf8', timeout: 30000, windowsHide: true,
+  });
+  try {
+    let result = runCli([]);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Missing participant\/main\.ts.*--command/);
+    mkdirSync(join(cwd, 'participant'));
+    // Match the existing participant package's CommonJS module setting.
+    writeFileSync(join(cwd, 'participant', 'package.json'), '{"type":"commonjs"}');
+    writeFileSync(join(cwd, 'participant', 'response.ts'), `
+      const { expected } = require(${JSON.stringify(oracle)});
+      module.exports.respond = (request: unknown): unknown => expected(request);
+    `);
+    const solution = `
+      const { createInterface } = require('node:readline');
+      const { respond } = require('./response.ts');
+      createInterface({ input: process.stdin }).on('line', (line: string) => {
+        const response: unknown = respond(JSON.parse(line));
+        console.log(JSON.stringify(response));
+      });
+    `;
+    writeFileSync(join(cwd, 'participant', 'main.ts'), solution);
+    result = runCli([]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /PASS: all \d+ cases/);
+    writeFileSync(join(cwd, 'participant', 'custom.ts'), solution);
+    writeFileSync(join(cwd, 'participant', 'main.ts'), 'throw new Error("default must not run");');
+    result = runCli(['--command', `"${process.execPath}" participant/custom.ts`]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /PASS: all \d+ cases/);
+    result = runCli(['--command', '   ']);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /--command must not be empty/);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
 test('oracle matches independently authored smoke output', () => {
   const smoke = fixedCases()[1];
   assert.deepEqual(expected(smoke), JSON.parse(readFileSync(new URL('../../examples/smoke.output.jsonl', import.meta.url), 'utf8')));

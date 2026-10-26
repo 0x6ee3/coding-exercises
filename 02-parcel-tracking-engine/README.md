@@ -31,24 +31,37 @@ Use at least 16 cases to cover every category; the default runs two rounds. Inva
 
 ## Requirements
 
-Install Node.js 20+ and npm, plus the runtime or compiler for your chosen language. There are no package dependencies or install step. Compile your program before running the harness if your language requires it.
+Install Node.js 24+ and npm, plus the runtime or compiler for your chosen language. The harness runs without installing packages. Compile your program before running the harness if your language requires it.
+
+For TypeScript editor support and strict typechecking of `participant/**/*.ts`, install the development dependencies and run:
+
+```sh
+npm ci
+npm run typecheck
+```
+
+The root `tsconfig.json` provides Node.js types and settings compatible with native TypeScript execution. The command checks both `harness/**/*.ts` and `participant/**/*.ts`, and also works while `participant/` is empty. Typechecking does not emit compiled files.
 
 ## Run your solution
 
 Run these commands from this directory:
 
 ```sh
+npm run test
+npm run test -- --seed shipment-42 --cases 96
 npm run test -- --command "node participant/main.js"
 npm run test -- --command "python participant/main.py" --seed shipment-42 --cases 96 --timeout 5000 --verbose
 ```
 
-The participant command runs through the platform shell with this working directory; quote paths according to your shell. Your program must read JSONL from stdin, write and flush one JSONL response per request, and remain running until stdin closes. Send debugging output to stderr.
+Without `--command`, the harness runs `participant/main.ts` with the same Node.js executable as the harness. Native TypeScript support strips types without typechecking; use explicit `.ts` extensions for local imports and `import type` for type-only imports. Syntax requiring code generation, such as enums and parameter properties, and `tsconfig.json` path aliases require a custom command with your own TypeScript runner or build step.
+
+A custom `--command` takes precedence and runs through the platform shell with this working directory; quote paths according to your shell. Your program must read JSONL from stdin, write and flush one JSONL response per request, and remain running until stdin closes. Send debugging output to stderr.
 
 ### Options
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--command` | Required | Command that starts your program |
+| `--command` | `node participant/main.ts` | Optional shell command that overrides the default TypeScript entry point |
 | `--seed` | `1` | Arbitrary string used to reproduce generated inputs |
 | `--cases` | `32` | Positive integer specifying how many requests to test |
 | `--timeout` | `5000` | Milliseconds allowed per response and for shutdown after EOF; integer from 1 through 2147483647 |

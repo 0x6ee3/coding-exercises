@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
-import { fixedCases, generateCases } from './generators.js';
-import { run } from './runner.js';
+import { existsSync } from 'node:fs';
+import { fixedCases, generateCases } from './generators.ts';
+import { run } from './runner.ts';
 
 try {
   const { values } = parseArgs({ options: {
@@ -9,15 +10,10 @@ try {
     verbose: { type: 'boolean', default: false }, help: { type: 'boolean', default: false }
   } });
   if (values.help) {
-    console.log('npm test -- --command "node participant/main.js" [--seed 12345] [--cases 20] [--timeout 5000] [--verbose]');
-  } else if (values.command === undefined) {
-    // A fresh checkout is runnable without pretending that a participant exists.
-    console.log('No participant command supplied. Running harness self-tests.\nUse npm test -- --command "node participant/main.js" to test your program.');
-    const { spawnSync } = await import('node:child_process');
-    const result = spawnSync(process.execPath, ['--import', 'tsx', '--test', 'harness/tests/harness.test.ts'], { stdio: 'inherit' });
-    process.exitCode = result.status ?? 1;
+    console.log('npm test -- [--command "..."] [--seed 12345] [--cases 20] [--timeout 5000] [--verbose]\nDefaults to node participant/main.ts when --command is omitted.');
   } else {
-    if (!values.command.trim()) throw new Error('--command must not be empty');
+    if (values.command !== undefined && !values.command.trim()) throw new Error('--command must not be empty');
+    if (values.command === undefined && !existsSync('participant/main.ts')) throw new Error('Missing participant/main.ts. Create it or provide --command "..." to run your solution.');
     const numeric = (name: 'seed' | 'cases' | 'timeout', min: number, max: number) => {
       const raw = values[name]!;
       const n = Number(raw);

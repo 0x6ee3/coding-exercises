@@ -1,4 +1,4 @@
-import type { Request, FleetEvent } from './reference.js';
+import type { Request, FleetEvent } from './reference.ts';
 
 export function edgeCases(): Request[] {
   const valid = { eventId: 'id', vehicleId: 'v', timestamp: 1, type: 'battery' as const, percentage: 50 };

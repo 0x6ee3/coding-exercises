@@ -2,14 +2,14 @@
   "name": "fleet-event-processor-challenge",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=24" },
   "scripts": {
-    "test": "tsx harness/cli.ts",
-    "test:harness": "tsx --test harness/tests/*.test.ts",
+    "test": "node harness/cli.ts",
+    "test:harness": "node --test harness/tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "tsx": "^4.20.0",
     "typescript": "^5.9.0"
   }
 }
