@@ -47,6 +47,7 @@ No output field is null or omitted. Include every parcel identified in a retaine
 1. Visit events in input order. Deduplicate globally across the request by exact eventId. Keep the first occurrence and ignore every later occurrence, even if it names another parcel or has different field values. Duplicates produce no anomaly and do not create parcel records.
 2. Sort retained events by timestamp ascending, then eventId ascending. Deduplication happens before sorting.
 3. Process events in that order. Append each rejected event's anomaly to its parcel in processing order. An anomaly contains the eventId and either MISSING_CREATED or INVALID_TRANSITION. Each retained event produces at most one anomaly.
+4. After processing all retained events, sort the response's parcel records by parcelId ascending. This output ordering is independent of event processing order.
 
 ## State machine
 
