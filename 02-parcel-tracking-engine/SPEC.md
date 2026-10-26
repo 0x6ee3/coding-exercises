@@ -72,29 +72,94 @@ A parcel without an accepted CREATED retains its initial fields and empty histor
 An empty batch:
 
 ```json
-{"requestId":"case-empty","events":[]}
+{ "requestId": "case-empty", "events": [] }
 ```
 
 ```json
-{"requestId":"case-empty","parcels":[]}
+{ "requestId": "case-empty", "parcels": [] }
 ```
 
 A parcel with no creation:
 
 ```json
-{"requestId":"case-missing","events":[{"eventId":"e9","parcelId":"P-2","timestamp":10,"type":"DELIVERED","facilityId":"F"}]}
+{
+  "requestId": "case-missing",
+  "events": [
+    {
+      "eventId": "e9",
+      "parcelId": "P-2",
+      "timestamp": 10,
+      "type": "DELIVERED",
+      "facilityId": "F"
+    }
+  ]
+}
 ```
 
 ```json
-{"requestId":"case-missing","parcels":[{"parcelId":"P-2","status":"NOT_CREATED","currentFacility":"","lastUpdated":0,"history":[],"anomalies":[{"eventId":"e9","reason":"MISSING_CREATED"}]}]}
+{
+  "requestId": "case-missing",
+  "parcels": [
+    {
+      "parcelId": "P-2",
+      "status": "NOT_CREATED",
+      "currentFacility": "",
+      "lastUpdated": 0,
+      "history": [],
+      "anomalies": [
+        {
+          "eventId": "e9",
+          "reason": "MISSING_CREATED"
+        }
+      ]
+    }
+  ]
+}
 ```
 
 Delivery immediately after creation:
 
 ```json
-{"requestId":"case-transition","events":[{"eventId":"e1","parcelId":"P-1001","timestamp":1000,"type":"CREATED","facilityId":"BER-01"},{"eventId":"e9","parcelId":"P-1001","timestamp":1100,"type":"DELIVERED","facilityId":"BER-02"}]}
+{
+  "requestId": "case-transition",
+  "events": [
+    {
+      "eventId": "e1",
+      "parcelId": "P-1001",
+      "timestamp": 1000,
+      "type": "CREATED",
+      "facilityId": "BER-01"
+    },
+    {
+      "eventId": "e9",
+      "parcelId": "P-1001",
+      "timestamp": 1100,
+      "type": "DELIVERED",
+      "facilityId": "BER-02"
+    }
+  ]
+}
 ```
 
 ```json
-{"requestId":"case-transition","parcels":[{"parcelId":"P-1001","status":"CREATED","currentFacility":"BER-01","lastUpdated":1000,"history":["CREATED"],"anomalies":[{"eventId":"e9","reason":"INVALID_TRANSITION"}]}]}
+{
+  "requestId": "case-transition",
+  "parcels": [
+    {
+      "parcelId": "P-1001",
+      "status": "CREATED",
+      "currentFacility": "BER-01",
+      "lastUpdated": 1000,
+      "history": [
+        "CREATED"
+      ],
+      "anomalies": [
+        {
+          "eventId": "e9",
+          "reason": "INVALID_TRANSITION"
+        }
+      ]
+    }
+  ]
+}
 ```
