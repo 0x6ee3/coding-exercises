@@ -73,9 +73,9 @@ The first response timeout includes runtime startup. Increase the timeout if you
 
 The harness compares the entire response: statuses, history, facilities, timestamps, anomalies, errors, array ordering, and missing or extra fields. A run passes only when every response matches and the program exits successfully after EOF.
 
-Success exits with code 0; failures exit with code 1. Case failures report the seed, case ID, category, first differing JSON path where applicable, and recent participant stderr. Session failures also report unsolicited output or unsuccessful shutdown. Use `--verbose` to inspect the failing input, then rerun with the same seed and case count.
+Success exits with code 0; failures exit with code 1. Case failures report the seed, case ID, category, and first differing JSON path where applicable. Participant stderr streams directly to the terminal during both successful and failing runs, so debugging output is visible as your program writes it. Session failures also report unsolicited output or unsuccessful shutdown. Use `--verbose` to inspect the failing input, then rerun with the same seed and case count.
 
-Stdout is bounded to 32 MiB per buffered response, and the last 8192 UTF-16 code units of stderr are retained. On failure, the runner requests process-tree termination and releases its streams. It runs your command locally and is not a sandbox for untrusted programs.
+Stdout is bounded to 32 MiB per buffered response. Stderr is inherited without buffering or truncation by the harness. On failure, the runner requests process-tree termination and releases its streams. It runs your command locally and is not a sandbox for untrusted programs.
 
 ## Examples
 

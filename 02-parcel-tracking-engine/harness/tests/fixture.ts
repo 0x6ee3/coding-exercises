@@ -4,6 +4,13 @@ import { reference } from '../reference.ts';
 const mode = process.argv[2];
 if (mode === 'exit') process.exit(7);
 for await (const line of createInterface({ input: process.stdin })) {
+  if (mode === 'stderr') console.error('fixture debug message');
+  if (mode === 'stderr-fail') {
+    process.stderr.write('debug start\n' + 'x'.repeat(9000) + '\ndebug end\n');
+    await new Promise(resolve => setTimeout(resolve, 300));
+    process.stdout.write('{}\n', () => process.exit(0));
+    await new Promise(() => {});
+  }
   if (mode === 'hang') { await new Promise(() => { setInterval(() => {}, 1000); }); }
   else if (mode === 'junk') console.log('not json');
   else if (mode === 'extra') { console.log(JSON.stringify(reference(JSON.parse(line)))); console.log('{}'); }

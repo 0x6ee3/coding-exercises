@@ -43,6 +43,5 @@ try {
   console.log(`Passed ${passed}/${o.cases} cases (seed=${JSON.stringify(o.seed)}).`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
-  if (participant?.stderr()) console.error(`Participant stderr (last 8192 characters):\n${participant.stderr()}`);
   process.exitCode = 1;
 } finally { participant?.stop(); }

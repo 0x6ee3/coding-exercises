@@ -1,16 +1,14 @@
 import { spawn } from 'node:child_process';
-// One long-lived process, one outstanding request, bounded stdout and stderr.
+// One long-lived process, one outstanding request, bounded stdout and live stderr.
 export function startParticipant(command: string | undefined, timeout: number) {
   const child = spawn(command ?? process.execPath, command === undefined ? ['participant/main.ts'] : [], {
-    shell: command !== undefined, stdio: ['pipe', 'pipe', 'pipe'], detached: process.platform !== 'win32', windowsHide: true,
+    shell: command !== undefined, stdio: ['pipe', 'pipe', 'inherit'], detached: process.platform !== 'win32', windowsHide: true,
   });
-  let buffer = '', stderr = '', closing = false;
+  let buffer = '', closing = false;
   let pending: { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> } | null = null;
   let failure: Error | null = null;
   const fail = (error: Error) => { failure ??= error; if (pending) { const p = pending; pending = null; clearTimeout(p.timer); p.reject(failure); } };
   const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', data => { stderr = (stderr + data).slice(-8192); });
   child.stdout.on('data', data => {
     if (failure) return;
     if (!pending) { fail(new Error('Unsolicited stdout data')); return; }
@@ -51,17 +49,18 @@ export function startParticipant(command: string | undefined, timeout: number) {
       if (failure) throw failure;
       if (buffer.length) throw new Error('Trailing stdout without newline');
     },
-    stderr: () => stderr,
     stop() {
       closing = true;
-      child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy();
+      const release = () => { child.stdin.destroy(); child.stdout.destroy(); };
       child.unref();
-      if (child.exitCode !== null || child.pid === undefined) return;
+      if (child.exitCode !== null || child.pid === undefined) { release(); return; }
       if (process.platform === 'win32') {
+        // Keep stdin open until taskkill finds the shell's descendants.
         const killer = spawn(`${process.env.SystemRoot || 'C:\\Windows'}\\System32\\taskkill.exe`, ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore', windowsHide: true });
-        killer.on('error', () => child.kill());
+        killer.on('error', () => { child.kill(); release(); });
+        killer.on('close', () => release());
         killer.unref();
-      } else { try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill(); } }
+      } else { try { process.kill(-child.pid, 'SIGKILL'); } catch { child.kill(); } release(); }
     },
   };
 }

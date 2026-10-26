@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -144,6 +144,13 @@ function cli(mode: string, cases = 1, timeout = 5000) {
   return spawnSync(process.execPath, ['harness/runner.ts', '--command', `"${process.execPath}" harness/tests/fixture.ts ${mode}`, '--cases', String(cases), '--timeout', String(timeout)], { cwd: root, encoding: 'utf8', timeout: 30000 });
 }
 test('CLI validates persistent multi-request process across every category and envelope variant', () => { const r = cli('correct', 96); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /Passed 96\/96/); });
+test('CLI streams participant stderr on successful requests', () => {
+  const r = cli('stderr', 2);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stderr, 'fixture debug message\n'.repeat(2));
+  assert.match(r.stdout, /Passed 2\/2/);
+});
+
 const failures = { wrong: /expected keys/, junk: /Invalid JSON/, extra: /stdout/, 'partial-extra': /stdout/, utf8: /UTF-8/, unterminated: /Response timeout/, exit: /Participant exited/, hang: /Response timeout/, 'nonzero-eof': /code 9/, 'hang-eof': /after EOF/ };
 for (const [mode, expected] of Object.entries(failures)) test(`CLI rejects ${mode}`, () => { const r = cli(mode, 1, ['hang', 'hang-eof', 'unterminated'].includes(mode) ? 2000 : 5000); assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, expected); });
 test('CLI rejects a timer value that would overflow instead of timing out immediately', () => {
@@ -188,4 +195,25 @@ test('CLI defaults to a TypeScript entry point and respects custom commands', ()
     assert.equal(result.status, 1);
     assert.match(result.stderr, /--command must not be empty/);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
+
+test('CLI streams all participant stderr before a request fails without replaying it', async () => {
+  const child = spawn(process.execPath, ['harness/runner.ts', '--command', `"${process.execPath}" harness/tests/fixture.ts stderr-fail`, '--cases', '1', '--timeout', '5000'], {
+    cwd: root, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
+  });
+  const debug = 'debug start\n' + 'x'.repeat(9000) + '\ndebug end\n';
+  let stderr = '', streamedBeforeFailure = false;
+  child.stderr.setEncoding('utf8');
+  child.stderr.on('data', data => {
+    stderr += data;
+    if (stderr.includes(debug) && !stderr.includes('FAIL')) streamedBeforeFailure = true;
+  });
+  const code = await new Promise<number | null>((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', resolve);
+  });
+  assert.equal(code, 1, stderr);
+  assert.ok(streamedBeforeFailure, 'full debug output must arrive while the request is still pending');
+  assert.equal(stderr.split(debug).length - 1, 1, 'debug output must appear exactly once');
+  assert.match(stderr, /expected keys/);
 });
