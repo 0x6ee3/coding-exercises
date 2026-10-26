@@ -1,12 +1,12 @@
 # Parcel Tracking Engine
 
-Build an engine that reconstructs parcel states from unordered scan events, validates transitions, and reports anomalies. Implement it independently in any language inside `participant/`, which starts empty.
+Build an engine that reconstructs parcel states from unordered scan events, checks transitions, and reports anomalies. Implement it independently in any language inside `participant/`, which starts empty.
 
-Read [SPEC.md](SPEC.md) for the complete protocol, validation rules, state transitions, and anomaly ordering. The reference implementation in `harness/` supports verification; it is not starter code for your solution.
+Read [SPEC.md](SPEC.md) for the complete protocol, input guarantees, state transitions, and anomaly ordering. The reference implementation in `harness/` supports verification; it is not starter code for your solution.
 
 ## Scenario coverage
 
-Generated cases cycle through 16 categories:
+Generated cases cycle through 14 categories:
 
 | Category | What it exercises |
 | --- | --- |
@@ -20,14 +20,16 @@ Generated cases cycle through 16 categories:
 | After terminal states | Scans after delivery or return |
 | Scale | Batches containing 2,500 parcels |
 | Simultaneous shipments | Interleaved parcels with overlapping timestamps |
-| Malformed events | Missing fields, incorrect types, and invalid values |
 | Tied timestamps | Breaking ties by event ID |
 | Boundaries | Identifier preservation, capitalization, and numeric limits |
 | State pairs | All 49 pairs of current and next statuses |
 | Empty batches | Requests containing no events |
-| Invalid requests | Incorrect request structures |
 
-Use at least 16 cases to cover every category; the default runs two rounds. Invalid-request variants rotate over six rounds, so 96 cases covers them all. Counts below 16 cover only the initial categories. The same seed and case count reproduce identical inputs within this harness version. Each request is an independent batch.
+Use at least 14 cases to cover every category; the default runs 32 cases. The same seed and case count reproduce identical inputs within this harness version. Each request is an independent batch.
+
+All inputs are valid JSON with a fixed request/event structure. Every event field is present and has the correct type; no input field is null. Use your language's standard JSON library and ordinary typed models. Malformed JSON, missing fields, wrong types, and invalid field values are outside the assessment. The challenge focuses on deduplication, ordering, and parcel state transitions.
+
+Responses contain `requestId` and `parcels`, with no request-level errors array. All output fields are non-null. Before an accepted CREATED event, a parcel has status `NOT_CREATED`, currentFacility `""`, lastUpdated `0`, and empty history. See SPEC.md for the exact output shape.
 
 ## Requirements
 
@@ -71,7 +73,7 @@ The first response timeout includes runtime startup. Increase the timeout if you
 
 ## Results and diagnostics
 
-The harness compares the entire response: statuses, history, facilities, timestamps, anomalies, errors, array ordering, and missing or extra fields. A run passes only when every response matches and the program exits successfully after EOF.
+The harness compares the entire response: statuses, history, facilities, timestamps, anomalies, array ordering, and missing or extra fields. A run passes only when every response matches and the program exits successfully after EOF.
 
 Success exits with code 0; failures exit with code 1. Case failures report the seed, case ID, category, and first differing JSON path where applicable. Participant stderr streams directly to the terminal during both successful and failing runs, so debugging output is visible as your program writes it. Session failures also report unsolicited output or unsuccessful shutdown. Use `--verbose` to inspect the failing input, then rerun with the same seed and case count.
 
@@ -79,7 +81,7 @@ Stdout is bounded to 32 MiB per buffered response. Stderr is inherited without b
 
 ## Examples
 
-[examples/input.jsonl](examples/input.jsonl) and [examples/output.jsonl](examples/output.jsonl) show a two-request session.
+[examples/input.jsonl](examples/input.jsonl) and [examples/output.jsonl](examples/output.jsonl) show a three-request session.
 
 ## Verify the harness
 
@@ -87,4 +89,4 @@ Stdout is bounded to 32 MiB per buffered response. Stderr is inherited without b
 npm run test:harness
 ```
 
-The dedicated tests check literal expected results, every state pair, malformed inputs, deterministic generation, large batches, and runner behavior for protocol errors, incorrect output, timeouts, and premature exits. Fixtures under `harness/tests/` are for testing the harness; do not import them into your solution.
+The dedicated tests check literal expected results, every state pair, guaranteed input shapes, deterministic generation, large batches, and runner behavior for protocol errors, incorrect output, timeouts, and premature exits. Fixtures under `harness/tests/` are for testing the harness; do not import them into your solution.

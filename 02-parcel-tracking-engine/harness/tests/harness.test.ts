@@ -5,18 +5,19 @@ import { fileURLToPath } from 'node:url';
 import { readFileSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Event, Status } from '../reference.ts';
 import { reference, statuses } from '../reference.ts';
 import { generate, categories } from '../generator.ts';
 import { difference } from '../validate.ts';
-const event = (eventId: string, type: string, timestamp: unknown = 1, extra: Record<string, unknown> = {}): Record<string, unknown> => ({ eventId, parcelId: 'P', type, timestamp, facilityId: eventId, ...extra });
-const run = (events: unknown[]) => reference({ requestId: 'r', events });
+const event = (eventId: string, type: Status, timestamp = 1, extra: Partial<Event> = {}): Event => ({ eventId, parcelId: 'P', type, timestamp, facilityId: eventId, ...extra });
+const run = (events: Event[]) => reference({ requestId: 'r', events });
 test('literal ordering, rejected events, facility and history expectations', () => {
   assert.deepEqual(run([event('b', 'PICKED_UP'), event('c', 'DELIVERED', 2), event('a', 'CREATED')]), {
-    requestId: 'r', errors: [], parcels: [{ parcelId: 'P', status: 'PICKED_UP', currentFacility: 'b', lastUpdated: 1, history: ['CREATED', 'PICKED_UP'], anomalies: [{ eventId: 'c', reason: 'INVALID_TRANSITION' }] }],
+    requestId: 'r', parcels: [{ parcelId: 'P', status: 'PICKED_UP', currentFacility: 'b', lastUpdated: 1, history: ['CREATED', 'PICKED_UP'], anomalies: [{ eventId: 'c', reason: 'INVALID_TRANSITION' }] }],
   });
 });
 test('all state pairs including terminal states and loops', () => {
-  const routes: Record<string, string[]> = { CREATED: ['CREATED'], PICKED_UP: ['CREATED', 'PICKED_UP'], IN_TRANSIT: ['CREATED', 'PICKED_UP', 'IN_TRANSIT'], AT_SORTING_CENTER: ['CREATED', 'PICKED_UP', 'IN_TRANSIT', 'AT_SORTING_CENTER'], OUT_FOR_DELIVERY: ['CREATED', 'PICKED_UP', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'OUT_FOR_DELIVERY'] };
+  const routes: Record<string, Status[]> = { CREATED: ['CREATED'], PICKED_UP: ['CREATED', 'PICKED_UP'], IN_TRANSIT: ['CREATED', 'PICKED_UP', 'IN_TRANSIT'], AT_SORTING_CENTER: ['CREATED', 'PICKED_UP', 'IN_TRANSIT', 'AT_SORTING_CENTER'], OUT_FOR_DELIVERY: ['CREATED', 'PICKED_UP', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'OUT_FOR_DELIVERY'] };
   routes.DELIVERED = [...routes.OUT_FOR_DELIVERY, 'DELIVERED']; routes.RETURNED = [...routes.OUT_FOR_DELIVERY, 'RETURNED'];
   const allowed = new Set(['CREATED:PICKED_UP', 'PICKED_UP:IN_TRANSIT', 'IN_TRANSIT:AT_SORTING_CENTER', 'AT_SORTING_CENTER:IN_TRANSIT', 'AT_SORTING_CENTER:OUT_FOR_DELIVERY', 'OUT_FOR_DELIVERY:DELIVERED', 'OUT_FOR_DELIVERY:RETURNED']);
   for (const from of statuses) for (const to of statuses) {
@@ -28,24 +29,33 @@ test('all state pairs including terminal states and loops', () => {
     assert.equal(p.lastUpdated, accepted ? 100 : route.length - 1);
   }
 });
-test('missing creation, late creation, payload precedence and global first-wins deduplication', () => {
-  const r = run([event('bad', 'CREATED', 'bad'), event('bad', 'CREATED', 0), event('early', 'IN_TRANSIT', 0), event('late', 'CREATED', 3), event('late', 'CREATED', 0, { parcelId: 'OTHER' })]);
-  assert.equal(r.parcels.length, 1);
-  assert.deepEqual(r.parcels[0].history, ['CREATED']);
-  assert.equal(r.parcels[0].lastUpdated, 3);
-  assert.deepEqual(r.parcels[0].anomalies, [{ eventId: 'bad', reason: 'INVALID_TIMESTAMP' }, { eventId: 'early', reason: 'MISSING_CREATED' }]);
-  assert.equal(run([event('x', 'PICKED_UP')]).parcels[0].status, null);
+test('missing and late creation preserve fixed initial fields', () => {
+  assert.deepEqual(run([event('x', 'PICKED_UP')]), {
+    requestId: 'r', parcels: [{ parcelId: 'P', status: 'NOT_CREATED', currentFacility: '', lastUpdated: 0, history: [], anomalies: [{ eventId: 'x', reason: 'MISSING_CREATED' }] }],
+  });
+  const p = run([event('early', 'IN_TRANSIT', 0), event('late', 'CREATED', 3)]).parcels[0];
+  assert.equal(p.status, 'CREATED');
+  assert.deepEqual(p.history, ['CREATED']);
+  assert.equal(p.lastUpdated, 3);
+  assert.deepEqual(p.anomalies, [{ eventId: 'early', reason: 'MISSING_CREATED' }]);
+  assert.deepEqual(run([]), { requestId: 'r', parcels: [] });
+  const zero = run([event('zero', 'CREATED', 0)]).parcels[0];
+  assert.equal(zero.status, 'CREATED');
+  assert.equal(zero.currentFacility, 'zero');
+  assert.equal(zero.lastUpdated, 0);
+  assert.deepEqual(zero.history, ['CREATED']);
 });
-test('malformed payloads and unusable identifiers are explicit', () => {
-  assert.deepEqual(run([null, {}, { eventId: 'x' }, { eventId: 'x', parcelId: 'ignored' }]).errors, [{ index: 0, reason: 'INVALID_EVENT' }, { index: 1, reason: 'INVALID_EVENT_ID' }, { index: 2, eventId: 'x', reason: 'INVALID_PARCEL_ID' }]);
-  const invalidPayloads: [Record<string, unknown>, string][] = [[{ timestamp: undefined }, 'MISSING_FIELD'], [{ timestamp: null }, 'INVALID_TIMESTAMP'], [{ type: 'NO' }, 'INVALID_EVENT_TYPE'], [{ facilityId: '' }, 'INVALID_FACILITY_ID']];
-  for (const [patch, reason] of invalidPayloads) {
-    const e = event('x', 'CREATED', 0, patch); if (e.timestamp === undefined) delete e.timestamp;
-    assert.deepEqual(run([e]).parcels[0].anomalies, [{ eventId: 'x', reason }]);
-  }
-  assert.deepEqual(reference(null), { requestId: null, parcels: [], errors: [{ reason: 'INVALID_REQUEST' }] });
-  assert.deepEqual(run([]), { requestId: 'r', parcels: [], errors: [] });
+
+test('deduplication is global, first-wins, and precedes sorting', () => {
+  const p = run([event('same', 'CREATED', 10), event('same', 'DELIVERED', 0, { parcelId: 'OTHER' }), event('pickup', 'PICKED_UP', 11)]);
+  assert.equal(p.parcels.length, 1);
+  assert.deepEqual(p.parcels[0].history, ['CREATED', 'PICKED_UP']);
+  assert.deepEqual(p.parcels[0].anomalies, []);
+  const rejected = run([event('same', 'IN_TRANSIT', 1), event('same', 'CREATED', 0)]).parcels[0];
+  assert.equal(rejected.status, 'NOT_CREATED');
+  assert.deepEqual(rejected.anomalies, [{ eventId: 'same', reason: 'MISSING_CREATED' }]);
 });
+
 test('generator reproducibility, coverage, scale and sorting', () => {
   const a = [...generate('abc', 24)];
   assert.deepEqual(a, [...generate('abc', 24)]);
@@ -71,29 +81,40 @@ test('generated assessment cases exercise their advertised adversarial behavior'
     for (const p of boundaries) {
       assert.equal(p.lastUpdated, 9007199254740991);
       assert.equal(p.currentFacility, ' pickup ');
-      assert.deepEqual(p.anomalies.map(a => a.reason), ['INVALID_TIMESTAMP', 'MISSING_CREATED']);
+      assert.deepEqual(p.anomalies.map(a => a.reason), ['MISSING_CREATED']);
     }
     const matrix = output('transition-matrix').parcels;
     assert.equal(matrix.length, 49);
     assert.equal(matrix.filter(p => p.anomalies.length === 0).length, 7);
     assert.deepEqual(output('empty').parcels, []);
-    for (const c of cases.filter(c => c.category === 'invalid-request')) assert.deepEqual(reference(c.request).errors, [{ reason: 'INVALID_REQUEST' }]);
   }
 });
-test('nonempty identifiers, validation precedence and integer boundaries follow protocol', () => {
-  assert.deepEqual(run([event('', 'CREATED')]).errors, [{ index: 0, reason: 'INVALID_EVENT_ID' }]);
-  assert.equal(run([event(' ', 'CREATED', -0)]).parcels[0].status, 'CREATED');
-  const payloads: [Record<string, unknown>, string | null][] = [
-    [{ timestamp: false, type: 'bad', facilityId: null }, 'INVALID_TIMESTAMP'],
-    [{ timestamp: 0, type: 'bad', facilityId: null }, 'INVALID_EVENT_TYPE'],
-    [{ timestamp: 9007199254740991 }, null],
-    [{ timestamp: 9007199254740992 }, 'INVALID_TIMESTAMP'],
-  ];
-  for (const [patch, reason] of payloads) {
-    const p = run([event('x', 'CREATED', 0, patch)]).parcels[0];
-    assert.deepEqual(p.anomalies, reason ? [{ eventId: 'x', reason }] : []);
+test('generated wire requests are fully populated, typed, and non-null across seeds', () => {
+  for (const seed of ['1', 'abc', 'hiring-2026']) for (const { request } of generate(seed, 96)) {
+    const wire = JSON.parse(JSON.stringify(request));
+    assert.equal(typeof wire.requestId, 'string');
+    assert.ok(wire.requestId.length > 0);
+    assert.ok(Array.isArray(wire.events));
+    for (const e of wire.events) {
+      for (const key of ['eventId', 'parcelId', 'facilityId']) {
+        assert.equal(typeof e[key], 'string');
+        assert.ok(e[key].length > 0);
+      }
+      assert.ok(statuses.includes(e.type));
+      assert.ok(Number.isSafeInteger(e.timestamp) && e.timestamp >= 0);
+    }
+    const output = reference(wire);
+    assert.deepEqual(Object.keys(output).sort(), ['parcels', 'requestId']);
+    for (const parcel of output.parcels) {
+      assert.deepEqual(Object.keys(parcel).sort(), ['anomalies', 'currentFacility', 'history', 'lastUpdated', 'parcelId', 'status']);
+      assert.equal(typeof parcel.currentFacility, 'string');
+      assert.ok(Number.isSafeInteger(parcel.lastUpdated));
+      assert.ok(parcel.status === 'NOT_CREATED' || statuses.includes(parcel.status));
+      assert.ok(!JSON.stringify(parcel).includes(':null'));
+    }
   }
 });
+
 test('validator pinpoints nested mismatches and rejects extra keys', () => {
   assert.equal(difference({ timestamp: 0 }, { timestamp: -0 }), null);
   assert.match(difference({ parcels: [{ status: 'CREATED' }] }, { parcels: [{ status: null }] })!, /status/);
@@ -104,19 +125,13 @@ test('documented JSONL examples match literal expected responses', () => {
   const lines = (name: string) => readFileSync(new URL(`../../examples/${name}.jsonl`, import.meta.url), 'utf8').trim().split(/\r?\n/).map(line => JSON.parse(line));
   assert.deepEqual(lines('input').map(reference), lines('output'));
 });
-test('SPEC validation tables contain complete, correct expected responses', () => {
+test('SPEC examples match the reference responses', () => {
   const spec = readFileSync(new URL('../../SPEC.md', import.meta.url), 'utf8');
-  const expected = [...spec.matchAll(/\| `({"requestId".*})` \|/g)].map(m => JSON.parse(m[1]));
-  assert.equal(expected.length, 7);
-  const payloads = [
-    { eventId: 'e1', parcelId: 'P-1001', timestamp: 1000, type: 'CREATED' },
-    { eventId: 'e1', parcelId: 'P-1001', timestamp: '1000', type: 'CREATED', facilityId: 'BER-01' },
-    { eventId: 'e1', parcelId: 'P-1001', timestamp: 1000, type: 'UNKNOWN', facilityId: 'BER-01' },
-    { eventId: 'e1', parcelId: 'P-1001', timestamp: 1000, type: 'CREATED', facilityId: '' },
-  ];
-  const requests = [...payloads.map(e => ({ requestId: 'case-validation', events: [e] })), ...[null, { parcelId: 'P-1001' }, { eventId: 'e1' }].map(e => ({ requestId: 'case-error', events: [e] }))];
-  assert.deepEqual(requests.map(reference), expected);
+  const examples = [...spec.matchAll(/```json\r?\n([^`]+)```/g)].map(m => JSON.parse(m[1]));
+  assert.equal(examples.length, 6);
+  for (let i = 0; i < examples.length; i += 2) assert.deepEqual(reference(examples[i]), examples[i + 1]);
 });
+
 test('identifiers preserve spaces and case across all identifier fields', () => {
   const response = reference({ requestId: ' case ', events: [
     event('e', 'PICKED_UP', 0, { parcelId: ' P ', facilityId: ' f ' }),
@@ -125,14 +140,13 @@ test('identifiers preserve spaces and case across all identifier fields', () => 
     event('other', 'CREATED', 0, { parcelId: 'p', facilityId: 'f' }),
   ] });
   assert.equal(response.requestId, ' case ');
-  assert.deepEqual(response.errors, []);
   assert.deepEqual(response.parcels.map(p => p.parcelId), [' P ', 'P', 'p']);
   assert.deepEqual(response.parcels.map(p => p.history), [['CREATED', 'PICKED_UP'], ['CREATED'], ['CREATED']]);
   assert.deepEqual(response.parcels.map(p => p.currentFacility), [' f ', ' ', 'f']);
   assert.ok(response.parcels.every(p => p.anomalies.length === 0));
 });
 test('repeated loops preserve all accepted scans and rejected terminal scan changes nothing', () => {
-  const types = ['CREATED', 'PICKED_UP', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'OUT_FOR_DELIVERY', 'DELIVERED'];
+  const types: Status[] = ['CREATED', 'PICKED_UP', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'IN_TRANSIT', 'AT_SORTING_CENTER', 'OUT_FOR_DELIVERY', 'DELIVERED'];
   const p = run([...types.map((s, i) => event(`e${i}`, s, i)), event('after', 'RETURNED', 100)]).parcels[0];
   assert.deepEqual(p.history, types);
   assert.equal(p.currentFacility, 'e9');
@@ -143,7 +157,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 function cli(mode: string, cases = 1, timeout = 5000) {
   return spawnSync(process.execPath, ['harness/runner.ts', '--command', `"${process.execPath}" harness/tests/fixture.ts ${mode}`, '--cases', String(cases), '--timeout', String(timeout)], { cwd: root, encoding: 'utf8', timeout: 30000 });
 }
-test('CLI validates persistent multi-request process across every category and envelope variant', () => { const r = cli('correct', 96); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /Passed 96\/96/); });
+test('CLI validates persistent multi-request process across every category', () => { const r = cli('correct', 96); assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /Passed 96\/96/); });
 test('CLI streams participant stderr on successful requests', () => {
   const r = cli('stderr', 2);
   assert.equal(r.status, 0, r.stderr);
@@ -174,7 +188,7 @@ test('CLI defaults to a TypeScript entry point and respects custom commands', ()
     writeFileSync(join(cwd, 'package.json'), '{"type":"module"}');
     writeFileSync(join(cwd, 'participant', 'response.ts'), `
       import { reference } from ${JSON.stringify(new URL('../reference.ts', import.meta.url).href)};
-      export function respond(request: unknown): unknown { return reference(request); }
+      export function respond(request: Parameters<typeof reference>[0]): unknown { return reference(request); }
     `);
     writeFileSync(join(cwd, 'participant', 'main.ts'), `
       import { createInterface } from 'node:readline';

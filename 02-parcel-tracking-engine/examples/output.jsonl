@@ -1,2 +1,3 @@
-{"requestId":"case-001","parcels":[{"parcelId":"P-1001","status":"PICKED_UP","currentFacility":"BER-01","lastUpdated":1100,"history":["CREATED","PICKED_UP"],"anomalies":[]}],"errors":[]}
-{"requestId":"case-002","parcels":[{"parcelId":"P-2","status":null,"currentFacility":null,"lastUpdated":null,"history":[],"anomalies":[{"eventId":"e9","reason":"MISSING_CREATED"}]}],"errors":[{"index":0,"reason":"INVALID_EVENT"}]}
+{"requestId":"case-001","parcels":[{"parcelId":"P-1001","status":"PICKED_UP","currentFacility":"BER-01","lastUpdated":1100,"history":["CREATED","PICKED_UP"],"anomalies":[]}]}
+{"requestId":"case-002","parcels":[{"parcelId":"P-2","status":"NOT_CREATED","currentFacility":"","lastUpdated":0,"history":[],"anomalies":[{"eventId":"e9","reason":"MISSING_CREATED"}]}]}
+{"requestId":"case-003","parcels":[]}
