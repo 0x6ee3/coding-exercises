@@ -30,6 +30,12 @@ export function* generate(seed = '1', count = 32) {
     if (category === 'ties') {
       // Lexical event ordering must be observable, including a rejected premature scan.
       events.push({ eventId: 'tie-2', parcelId: 'TIE', timestamp: 0, type: 'CREATED', facilityId: 'F' }, { eventId: 'tie-10', parcelId: 'TIE', timestamp: 0, type: 'PICKED_UP', facilityId: 'G' });
+      // ASCII uppercase precedes lowercase; culture-sensitive collation can reverse them.
+      // Arrival order is reversed too, so ignoring the event-ID tie-breaker also fails.
+      events.push(
+        { eventId: 'ordinal-a', parcelId: 'TIE-ORDINAL', timestamp: 0, type: 'PICKED_UP', facilityId: 'pickup' },
+        { eventId: 'ordinal-A', parcelId: 'TIE-ORDINAL', timestamp: 0, type: 'CREATED', facilityId: 'create' },
+      );
     }
     if (category === 'boundaries') {
       events.length = 0;

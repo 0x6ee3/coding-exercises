@@ -115,6 +115,19 @@ test('generated wire requests are fully populated, typed, and non-null across se
   }
 });
 
+test('generated timestamp ties require ordinal event-ID ordering across case', () => {
+  for (const seed of ['1', '123', 'abc', 'hiring-2026']) {
+    const ties = [...generate(seed, 14)].find(c => c.category === 'ties')!.request;
+    const events = ties.events.filter(e => e.parcelId === 'TIE-ORDINAL');
+    assert.deepEqual(events.map(e => e.eventId), ['ordinal-a', 'ordinal-A']);
+    assert.deepEqual(events.map(e => e.timestamp), [0, 0]);
+    assert.deepEqual(reference(ties).parcels.find(p => p.parcelId === 'TIE-ORDINAL'), {
+      parcelId: 'TIE-ORDINAL', status: 'PICKED_UP', currentFacility: 'pickup', lastUpdated: 0,
+      history: ['CREATED', 'PICKED_UP'], anomalies: [],
+    });
+  }
+});
+
 test('validator pinpoints nested mismatches and rejects extra keys', () => {
   assert.equal(difference({ timestamp: 0 }, { timestamp: -0 }), null);
   assert.match(difference({ parcels: [{ status: 'CREATED' }] }, { parcels: [{ status: null }] })!, /status/);

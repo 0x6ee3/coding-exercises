@@ -20,7 +20,7 @@ Generated cases cycle through 14 categories:
 | After terminal states | Scans after delivery or return |
 | Scale | Batches containing 2,500 parcels |
 | Simultaneous shipments | Interleaved parcels with overlapping timestamps |
-| Tied timestamps | Breaking ties by event ID |
+| Tied timestamps | Breaking ties by event ID, including ordinal uppercase/lowercase ordering |
 | Boundaries | Identifier preservation, capitalization, and numeric limits |
 | State pairs | All 49 pairs of current and next statuses |
 | Empty batches | Requests containing no events |

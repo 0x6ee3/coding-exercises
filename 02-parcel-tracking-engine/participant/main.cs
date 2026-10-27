@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -9,51 +8,48 @@ var jsonContext = new ParcelJsonContext(new JsonSerializerOptions
     AllowOutOfOrderMetadataProperties = true
 });
 
-while (Console.ReadLine() is {} line)
+while (Console.ReadLine() is { } line)
 {
-    var req = JsonSerializer.Deserialize(line, jsonContext.ParcelRequest);
-    if (req == null)
+    var request = JsonSerializer.Deserialize(line, jsonContext.ParcelRequest);
+    if (request == null)
     {
         Console.Error.WriteLine($"failed to deserialize line: {line}");
         continue;
     }
-    Console.Error.WriteLine($"request {req.RequestId}");
+    Console.Error.WriteLine($"request {request.RequestId}");
 
-    var seen = new HashSet<string>(StringComparer.Ordinal);
-    var events = req.Events
-        .Where(entry => seen.Add(entry.EventId))
-        .OrderBy(e => e.Timestamp).ThenBy(e => e.EventId);
+    var events = request.Events
+        .DistinctBy(e => e.EventId, StringComparer.Ordinal)
+        .OrderBy(e => e.Timestamp)
+        .ThenBy(e => e.EventId, StringComparer.Ordinal);
     
     var parcels = new Dictionary<string, Parcel>();
-    foreach (var e in events) {
-        // Process events in that order.
-        // Append each rejected event's anomaly to its parcel in processing order.
-        // An anomaly contains the eventId and either MISSING_CREATED or INVALID_TRANSITION.
-        // Each retained event produces at most one anomaly.
-        if (!parcels.TryGetValue(e.ParcelId, out var p))
+    foreach (var @event in events)
+    {
+        if (!parcels.TryGetValue(@event.ParcelId, out var parcel))
         {
-            p = new Parcel(e.ParcelId);
-            parcels.Add(e.ParcelId, p);
+            parcel = new Parcel(@event.ParcelId);
+            parcels.Add(@event.ParcelId, parcel);
         }
 
-        if (validStateTransition(p.Status, e.Type))
+        if (IsValidStateTransition(parcel.Status, @event.Type))
         {
-            p.Status = e.Type;
-            p.CurrentFacility = e.FacilityId;
-            p.LastUpdated = e.Timestamp;
-            p.History.Add(e.Type);
+            parcel.Status = @event.Type;
+            parcel.CurrentFacility = @event.FacilityId;
+            parcel.LastUpdated = @event.Timestamp;
+            parcel.History.Add(@event.Type);
         }
         else
         {
-            p.Anomalies.Add(new Anomaly(e.EventId, p.Status == "NOT_CREATED" ? "MISSING_CREATED" : "INVALID_TRANSITION"));
+            parcel.Anomalies.Add(new Anomaly(@event.EventId, parcel.Status == "NOT_CREATED" ? "MISSING_CREATED" : "INVALID_TRANSITION"));
         }
     }
 
-    var res = new ParcelResponse(req.RequestId, parcels.Values.OrderBy(p => p.ParcelId, StringComparer.Ordinal).ToList());
+    var res = new ParcelResponse(request.RequestId, parcels.Values.OrderBy(p => p.ParcelId, StringComparer.Ordinal).ToList());
     Console.WriteLine(JsonSerializer.Serialize(res, jsonContext.ParcelResponse));
 }
 
-bool validStateTransition(string parcelState, string targetState) => (parcelState, targetState) switch {
+static bool IsValidStateTransition(string parcelState, string targetState) => (parcelState, targetState) switch {
     ("NOT_CREATED", "CREATED") => true,
     ("CREATED", "PICKED_UP") => true,
     ("PICKED_UP", "IN_TRANSIT") => true,
@@ -65,7 +61,6 @@ bool validStateTransition(string parcelState, string targetState) => (parcelStat
     _ => false
 };
 
-[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
 [JsonSerializable(typeof(ParcelRequest))]
 [JsonSerializable(typeof(ParcelResponse))]
 partial class ParcelJsonContext : JsonSerializerContext;
@@ -82,7 +77,7 @@ class Parcel {
         ParcelId = parcelId;
     }
 
-    public string ParcelId { get; set; }
+    public string ParcelId { get; }
 
     public string Status { get; set; } = "NOT_CREATED";
 
@@ -90,9 +85,9 @@ class Parcel {
 
     public long LastUpdated { get; set; } = 0;
 
-    public List<string> History { get; set; } = new List<string>();
+    public List<string> History { get; } = new List<string>();
 
-    public List<Anomaly> Anomalies { get; set; } = new List<Anomaly>();
+    public List<Anomaly> Anomalies { get; } = new List<Anomaly>();
 }
 
 record Anomaly(string EventId, string Reason);
